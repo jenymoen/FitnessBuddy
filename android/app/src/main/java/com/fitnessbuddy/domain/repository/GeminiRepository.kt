@@ -1,6 +1,7 @@
 package com.fitnessbuddy.domain.repository
 
 import com.fitnessbuddy.domain.model.TrainingPlan
+import com.fitnessbuddy.domain.model.WorkoutResult
 import com.fitnessbuddy.ui.onboarding.OnboardingData
 
 /**
@@ -23,5 +24,13 @@ interface GeminiRepository {
      * @return A Result containing the parsed TrainingPlan, or an error
      */
     suspend fun generateAndParseTrainingPlan(onboardingData: OnboardingData): Result<TrainingPlan>
+    
+    /**
+     * Generates personalized coaching feedback for a completed workout.
+     * 
+     * @param result The completed workout data
+     * @return A Result containing the feedback text, or an error
+     */
+    suspend fun generateWorkoutFeedback(result: WorkoutResult): Result<String>
 }
 

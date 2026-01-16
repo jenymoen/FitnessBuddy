@@ -37,9 +37,34 @@ class LocationTracker @Inject constructor(
 
     @SuppressLint("MissingPermission")
     fun getLocationUpdates(): Flow<LocationPoint> = callbackFlow {
+        android.util.Log.d("LocationTracker", "Starting location updates...")
+        
+        // Try to get last known location first for immediate response
+        try {
+            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                location?.let {
+                    android.util.Log.d("LocationTracker", "Got last known location: ${it.latitude}, ${it.longitude}")
+                    trySend(
+                        LocationPoint(
+                            latitude = it.latitude,
+                            longitude = it.longitude,
+                            altitude = it.altitude,
+                            speed = it.speed,
+                            timestamp = it.time
+                        )
+                    )
+                } ?: android.util.Log.d("LocationTracker", "No last known location available")
+            }.addOnFailureListener { e ->
+                android.util.Log.e("LocationTracker", "Failed to get last location: ${e.message}")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("LocationTracker", "Error getting last location: ${e.message}")
+        }
+        
         val callback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 result.lastLocation?.let { location ->
+                    android.util.Log.d("LocationTracker", "Location update: ${location.latitude}, ${location.longitude}, accuracy: ${location.accuracy}m")
                     trySend(
                         LocationPoint(
                             latitude = location.latitude,
@@ -51,6 +76,10 @@ class LocationTracker @Inject constructor(
                     )
                 }
             }
+            
+            override fun onLocationAvailability(availability: com.google.android.gms.location.LocationAvailability) {
+                android.util.Log.d("LocationTracker", "Location availability: ${availability.isLocationAvailable}")
+            }
         }
 
         fusedLocationClient.requestLocationUpdates(
@@ -58,8 +87,10 @@ class LocationTracker @Inject constructor(
             callback,
             Looper.getMainLooper()
         )
+        android.util.Log.d("LocationTracker", "Location updates requested")
 
         awaitClose {
+            android.util.Log.d("LocationTracker", "Stopping location updates")
             fusedLocationClient.removeLocationUpdates(callback)
         }
     }

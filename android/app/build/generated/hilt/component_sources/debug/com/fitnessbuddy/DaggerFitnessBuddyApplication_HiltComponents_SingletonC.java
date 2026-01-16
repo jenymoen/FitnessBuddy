@@ -14,6 +14,7 @@ import com.fitnessbuddy.data.repository.GeminiRepositoryImpl;
 import com.fitnessbuddy.data.repository.OnboardingDataHolder;
 import com.fitnessbuddy.data.repository.TrainingPlanRepositoryImpl;
 import com.fitnessbuddy.data.repository.WorkoutRepositoryImpl;
+import com.fitnessbuddy.data.sensor.BluetoothHeartRateManager;
 import com.fitnessbuddy.di.FirebaseModule_ProvideFirebaseAuthFactory;
 import com.fitnessbuddy.di.FirebaseModule_ProvideFirebaseFirestoreFactory;
 import com.fitnessbuddy.di.GeminiModule_ProvideGenerativeModelFactory;
@@ -526,7 +527,7 @@ public final class DaggerFitnessBuddyApplication_HiltComponents_SingletonC {
           return (T) new TrainingPlanViewModel(singletonCImpl.geminiRepositoryImplProvider.get(), singletonCImpl.trainingPlanRepositoryImplProvider.get(), singletonCImpl.onboardingDataHolderProvider.get());
 
           case 6: // com.fitnessbuddy.ui.workout.WorkoutTrackerViewModel
-          return (T) new WorkoutTrackerViewModel(singletonCImpl.trainingPlanRepositoryImplProvider.get(), singletonCImpl.locationTrackerProvider.get());
+          return (T) new WorkoutTrackerViewModel(singletonCImpl.trainingPlanRepositoryImplProvider.get(), singletonCImpl.locationTrackerProvider.get(), singletonCImpl.geminiRepositoryImplProvider.get(), singletonCImpl.bluetoothHeartRateManagerProvider.get());
 
           case 7: // com.fitnessbuddy.ui.workout.WorkoutViewModel
           return (T) new WorkoutViewModel(singletonCImpl.workoutRepositoryImplProvider.get());
@@ -631,6 +632,8 @@ public final class DaggerFitnessBuddyApplication_HiltComponents_SingletonC {
 
     Provider<LocationTracker> locationTrackerProvider;
 
+    Provider<BluetoothHeartRateManager> bluetoothHeartRateManagerProvider;
+
     Provider<WorkoutRepositoryImpl> workoutRepositoryImplProvider;
 
     SingletonCImpl(ApplicationContextModule applicationContextModuleParam) {
@@ -651,7 +654,8 @@ public final class DaggerFitnessBuddyApplication_HiltComponents_SingletonC {
       this.geminiRepositoryImplProvider = DoubleCheck.provider(new SwitchingProvider<GeminiRepositoryImpl>(singletonCImpl, 6));
       this.onboardingDataHolderProvider = DoubleCheck.provider(new SwitchingProvider<OnboardingDataHolder>(singletonCImpl, 8));
       this.locationTrackerProvider = DoubleCheck.provider(new SwitchingProvider<LocationTracker>(singletonCImpl, 9));
-      this.workoutRepositoryImplProvider = DoubleCheck.provider(new SwitchingProvider<WorkoutRepositoryImpl>(singletonCImpl, 10));
+      this.bluetoothHeartRateManagerProvider = DoubleCheck.provider(new SwitchingProvider<BluetoothHeartRateManager>(singletonCImpl, 10));
+      this.workoutRepositoryImplProvider = DoubleCheck.provider(new SwitchingProvider<WorkoutRepositoryImpl>(singletonCImpl, 11));
     }
 
     @Override
@@ -717,7 +721,10 @@ public final class DaggerFitnessBuddyApplication_HiltComponents_SingletonC {
           case 9: // com.fitnessbuddy.data.location.LocationTracker
           return (T) new LocationTracker(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
 
-          case 10: // com.fitnessbuddy.data.repository.WorkoutRepositoryImpl
+          case 10: // com.fitnessbuddy.data.sensor.BluetoothHeartRateManager
+          return (T) new BluetoothHeartRateManager(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
+
+          case 11: // com.fitnessbuddy.data.repository.WorkoutRepositoryImpl
           return (T) new WorkoutRepositoryImpl();
 
           default: throw new AssertionError(id);

@@ -2,9 +2,11 @@ package com.fitnessbuddy.data.repository
 
 import android.util.Log
 import com.fitnessbuddy.domain.model.TrainingPlan
+import com.fitnessbuddy.domain.model.WorkoutResult
 import com.fitnessbuddy.domain.repository.GeminiRepository
 import com.fitnessbuddy.ui.onboarding.OnboardingData
 import com.fitnessbuddy.ui.onboarding.TrainingPlanPromptBuilder
+import com.fitnessbuddy.ui.workout.WorkoutFeedbackPromptBuilder
 import com.google.ai.client.generativeai.GenerativeModel
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
@@ -82,6 +84,27 @@ class GeminiRepositoryImpl @Inject constructor(
         } catch (e: Exception) {
             Log.e("GeminiRepository", "Error generating/parsing plan: ${e.message}", e)
             Result.failure(Exception(e.message ?: "Something unexpected happened"))
+        }
+    }
+    
+    override suspend fun generateWorkoutFeedback(result: WorkoutResult): Result<String> {
+        return try {
+            val prompt = WorkoutFeedbackPromptBuilder.buildPrompt(result)
+            Log.d("GeminiRepository", "Requesting workout feedback from Gemini...")
+            
+            val response = generativeModel.generateContent(prompt)
+            val generatedText = response.text
+            
+            if (generatedText.isNullOrBlank()) {
+                Log.e("GeminiRepository", "Empty feedback response from AI")
+                return Result.failure(Exception("Empty response from AI"))
+            }
+            
+            Log.d("GeminiRepository", "Received feedback: ${generatedText.take(200)}")
+            Result.success(generatedText.trim())
+        } catch (e: Exception) {
+            Log.e("GeminiRepository", "Error generating workout feedback: ${e.message}", e)
+            Result.failure(Exception(e.message ?: "Failed to get feedback"))
         }
     }
     

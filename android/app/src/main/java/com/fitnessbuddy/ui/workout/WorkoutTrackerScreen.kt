@@ -1,6 +1,9 @@
 package com.fitnessbuddy.ui.workout
 
 import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,23 +16,28 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.*
+import com.fitnessbuddy.data.sensor.HeartRateSensorState
 
 // Theme colors (consistent across the app)
 private val DarkBackground = Color(0xFF0D0D0D)
@@ -46,13 +54,45 @@ fun WorkoutTrackerScreen(
     viewModel: WorkoutTrackerViewModel = hiltViewModel(),
     onNavigateBack: () -> Unit
 ) {
+    val context = LocalContext.current
+    
+    // Location permission state
+    var hasLocationPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    
+    // Permission launcher
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        hasLocationPermission = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                               permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (hasLocationPermission) {
+            // Permission granted, prepare the workout
+            viewModel.prepareWorkout()
+        }
+    }
+    
     LaunchedEffect(weekNumber, dayOfWeek) {
         viewModel.loadWorkout(weekNumber, dayOfWeek)
     }
 
+
     val trainingDay = viewModel.trainingDay
     val workoutState = viewModel.workoutState
     val workoutMode = viewModel.workoutMode
+    val feedbackState = viewModel.feedbackState
+    val feedback = viewModel.feedback
+    val feedbackError = viewModel.feedbackError
+    val currentHeartRate = viewModel.currentHeartRate
+    val heartRateSensorState = viewModel.heartRateSensorState
+    val currentSpeedKmh = viewModel.getSpeedKmh()
+    val hasGpsSignal = viewModel.hasGpsSignal
 
     Column(
         modifier = Modifier
@@ -122,15 +162,21 @@ fun WorkoutTrackerScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Stats Card
-            if (workoutMode == WorkoutMode.OUTDOOR && workoutState != WorkoutState.NOT_STARTED) {
-                StatsCard(
+            // Stats Card (shown for all modes once workout starts)
+            if (workoutState != WorkoutState.NOT_STARTED) {
+                LiveStatsCard(
                     distanceKm = viewModel.distanceMeters / 1000f,
-                    pace = viewModel.getPace()
+                    pace = viewModel.getPace(),
+                    speedKmh = currentSpeedKmh,
+                    heartRate = currentHeartRate,
+                    heartRateSensorState = heartRateSensorState,
+                    isOutdoor = workoutMode == WorkoutMode.OUTDOOR
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-
-                // Map View
+            }
+            
+            // Map View (outdoor only)
+            if (workoutMode == WorkoutMode.OUTDOOR && workoutState != WorkoutState.NOT_STARTED) {
                 RouteMapCard(
                     routePoints = viewModel.routePoints.map { 
                         LatLng(it.latitude, it.longitude) 
@@ -145,16 +191,39 @@ fun WorkoutTrackerScreen(
                 Spacer(modifier = Modifier.height(24.dp))
             }
 
+            // Feedback Card (shown when workout is completed)
+            if (workoutState == WorkoutState.COMPLETED) {
+                FeedbackCard(
+                    feedbackState = feedbackState,
+                    feedback = feedback,
+                    feedbackError = feedbackError,
+                    onDismiss = onNavigateBack
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
             // Control Buttons
             WorkoutControls(
                 workoutState = workoutState,
+                workoutMode = workoutMode,
+                hasGpsSignal = hasGpsSignal,
+                onPrepare = { 
+                    if (hasLocationPermission) {
+                        viewModel.prepareWorkout() 
+                    } else {
+                        permissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION
+                            )
+                        )
+                    }
+                },
                 onStart = { viewModel.startWorkout() },
                 onPause = { viewModel.pauseWorkout() },
                 onResume = { viewModel.resumeWorkout() },
-                onComplete = {
-                    viewModel.completeWorkout()
-                    onNavigateBack()
-                }
+                onComplete = { viewModel.completeWorkout() },
+                onDismiss = onNavigateBack
             )
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -306,35 +375,135 @@ private fun TimerCard(
 }
 
 @Composable
-private fun StatsCard(
+private fun LiveStatsCard(
     distanceKm: Float,
-    pace: String
+    pace: String,
+    speedKmh: Float,
+    heartRate: Int?,
+    heartRateSensorState: HeartRateSensorState,
+    isOutdoor: Boolean
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = CardBackground),
         shape = RoundedCornerShape(16.dp)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
+                .padding(16.dp)
         ) {
-            StatItem(
-                label = "DISTANCE",
-                value = String.format("%.2f km", distanceKm)
-            )
-            Box(
-                modifier = Modifier
-                    .width(1.dp)
-                    .height(48.dp)
-                    .background(TextGray.copy(alpha = 0.3f))
-            )
-            StatItem(
-                label = "PACE",
-                value = "$pace /km"
-            )
+            // Heart Rate Row (always shown)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Heart icon with pulse animation if connected
+                Text(
+                    text = "❤️",
+                    fontSize = 24.sp
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = "HEART RATE",
+                        color = TextGray,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Row(
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        Text(
+                            text = heartRate?.toString() ?: "--",
+                            color = if (heartRate != null) Color(0xFFFF5252) else TextGray,
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "bpm",
+                            color = TextGray,
+                            fontSize = 14.sp,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                // Sensor status indicator
+                Surface(
+                    color = when (heartRateSensorState) {
+                        HeartRateSensorState.CONNECTED -> AccentGreen.copy(alpha = 0.2f)
+                        HeartRateSensorState.CONNECTING -> Color(0xFFFF9800).copy(alpha = 0.2f)
+                        HeartRateSensorState.SCANNING -> Color(0xFF2196F3).copy(alpha = 0.2f)
+                        HeartRateSensorState.DISCONNECTED -> TextGray.copy(alpha = 0.2f)
+                    },
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = when (heartRateSensorState) {
+                            HeartRateSensorState.CONNECTED -> "CONNECTED"
+                            HeartRateSensorState.CONNECTING -> "CONNECTING"
+                            HeartRateSensorState.SCANNING -> "SCANNING"
+                            HeartRateSensorState.DISCONNECTED -> "NO SENSOR"
+                        },
+                        color = when (heartRateSensorState) {
+                            HeartRateSensorState.CONNECTED -> AccentGreen
+                            HeartRateSensorState.CONNECTING -> Color(0xFFFF9800)
+                            HeartRateSensorState.SCANNING -> Color(0xFF2196F3)
+                            HeartRateSensorState.DISCONNECTED -> TextGray
+                        },
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+            
+            // Only show outdoor stats if in outdoor mode
+            if (isOutdoor) {
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(TextGray.copy(alpha = 0.2f))
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Speed, Distance, Pace row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    StatItem(
+                        label = "SPEED",
+                        value = String.format("%.1f km/h", speedKmh)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(48.dp)
+                            .background(TextGray.copy(alpha = 0.3f))
+                    )
+                    StatItem(
+                        label = "DISTANCE",
+                        value = String.format("%.2f km", distanceKm)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(48.dp)
+                            .background(TextGray.copy(alpha = 0.3f))
+                    )
+                    StatItem(
+                        label = "PACE",
+                        value = "$pace /km"
+                    )
+                }
+            }
         }
     }
 }
@@ -495,58 +664,327 @@ private fun WorkoutPhaseRow(label: String, value: String) {
 }
 
 @Composable
+private fun FeedbackCard(
+    feedbackState: FeedbackState,
+    feedback: String?,
+    feedbackError: String?,
+    onDismiss: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = CardBackground),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Star,
+                    contentDescription = null,
+                    tint = AccentGreen,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "AI COACH FEEDBACK",
+                    color = AccentGreen,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            when (feedbackState) {
+                FeedbackState.LOADING -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = AccentGreen,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "Analyzing your workout...",
+                            color = TextGray,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+                FeedbackState.SUCCESS -> {
+                    Text(
+                        text = feedback ?: "Great workout!",
+                        color = TextWhite,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp
+                    )
+                }
+                FeedbackState.ERROR -> {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Info,
+                            contentDescription = null,
+                            tint = Color(0xFFFF9800),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = feedbackError ?: "Could not get feedback",
+                            color = Color(0xFFFF9800),
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+                FeedbackState.IDLE -> {
+                    // Nothing to show
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun WorkoutControls(
     workoutState: WorkoutState,
+    workoutMode: WorkoutMode = WorkoutMode.INDOOR,
+    hasGpsSignal: Boolean = false,
+    onPrepare: () -> Unit = {},
     onStart: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
-    onComplete: () -> Unit
+    onComplete: () -> Unit,
+    onDismiss: () -> Unit = {}
 ) {
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         when (workoutState) {
             WorkoutState.NOT_STARTED -> {
-                Button(
-                    onClick = onStart,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentGreen),
-                    shape = RoundedCornerShape(28.dp)
+                // Show "PREPARE" button for outdoor mode, "START" for indoor
+                if (workoutMode == WorkoutMode.OUTDOOR) {
+                    Button(
+                        onClick = onPrepare,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentGreen),
+                        shape = RoundedCornerShape(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.LocationOn,
+                            contentDescription = null,
+                            tint = Color.Black
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "PREPARE (ACQUIRE GPS)",
+                            color = Color.Black,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                    }
+                } else {
+                    // Indoor mode - start immediately
+                    Button(
+                        onClick = onStart,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentGreen),
+                        shape = RoundedCornerShape(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = Color.Black
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "START",
+                            color = Color.Black,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+                }
+            }
+            WorkoutState.PREPARING -> {
+                // GPS acquisition phase
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Icon(
-                        Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        tint = Color.Black
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "START",
-                        color = Color.Black,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
+                    // GPS Status indicator
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (hasGpsSignal) 
+                                AccentGreen.copy(alpha = 0.15f) 
+                            else 
+                                CardBackground
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            if (hasGpsSignal) {
+                                Icon(
+                                    Icons.Default.LocationOn,
+                                    contentDescription = null,
+                                    tint = AccentGreen,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "GPS SIGNAL ACQUIRED",
+                                    color = AccentGreen,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                            } else {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = AccentGreen,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = "WAITING FOR GPS SIGNAL...",
+                                    color = TextGray,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    // Start button (enabled when GPS acquired, or can start anyway)
+                    Button(
+                        onClick = onStart,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (hasGpsSignal) AccentGreen else AccentGreen.copy(alpha = 0.5f)
+                        ),
+                        shape = RoundedCornerShape(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = Color.Black
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (hasGpsSignal) "START WORKOUT" else "START ANYWAY",
+                            color = Color.Black,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
                 }
             }
             WorkoutState.RUNNING -> {
-                OutlinedButton(
-                    onClick = onPause,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(56.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF9800)),
-                    shape = RoundedCornerShape(28.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Icon(Icons.Default.Pause, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("PAUSE", fontWeight = FontWeight.Bold)
+                    OutlinedButton(
+                        onClick = onPause,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF9800)),
+                        shape = RoundedCornerShape(28.dp)
+                    ) {
+                        Icon(Icons.Default.Pause, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("PAUSE", fontWeight = FontWeight.Bold)
+                    }
+                    Button(
+                        onClick = onComplete,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentGreen),
+                        shape = RoundedCornerShape(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = null,
+                            tint = Color.Black
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "FINISH",
+                            color = Color.Black,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
+            }
+            WorkoutState.PAUSED -> {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Button(
+                        onClick = onResume,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentGreen),
+                        shape = RoundedCornerShape(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = Color.Black
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "RESUME",
+                            color = Color.Black,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = onComplete,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentGreen),
+                        shape = RoundedCornerShape(28.dp)
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("FINISH", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            WorkoutState.COMPLETED -> {
                 Button(
-                    onClick = onComplete,
+                    onClick = onDismiss,
                     modifier = Modifier
-                        .weight(1f)
+                        .fillMaxWidth()
                         .height(56.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = AccentGreen),
                     shape = RoundedCornerShape(28.dp)
@@ -558,48 +996,12 @@ private fun WorkoutControls(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "FINISH",
+                        text = "DONE",
                         color = Color.Black,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
                     )
                 }
-            }
-            WorkoutState.PAUSED -> {
-                Button(
-                    onClick = onResume,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(56.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentGreen),
-                    shape = RoundedCornerShape(28.dp)
-                ) {
-                    Icon(
-                        Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        tint = Color.Black
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "RESUME",
-                        color = Color.Black,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                OutlinedButton(
-                    onClick = onComplete,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(56.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentGreen),
-                    shape = RoundedCornerShape(28.dp)
-                ) {
-                    Icon(Icons.Default.Check, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("FINISH", fontWeight = FontWeight.Bold)
-                }
-            }
-            WorkoutState.COMPLETED -> {
-                // No controls needed
             }
         }
     }
