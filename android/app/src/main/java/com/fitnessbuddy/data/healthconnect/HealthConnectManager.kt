@@ -35,12 +35,17 @@ class HealthConnectManager @Inject constructor(
     suspend fun readSteps(startTime: Instant, endTime: Instant): Long {
         if (healthConnectClient == null) return 0
         
-        val request = ReadRecordsRequest(
-            recordType = StepsRecord::class,
-            timeRangeFilter = TimeRangeFilter.between(startTime, endTime)
-        )
-        val response = healthConnectClient.readRecords(request)
-        return response.records.sumOf { it.count }
+        return try {
+            val request = ReadRecordsRequest(
+                recordType = StepsRecord::class,
+                timeRangeFilter = TimeRangeFilter.between(startTime, endTime)
+            )
+            val response = healthConnectClient.readRecords(request)
+            response.records.sumOf { it.count }
+        } catch (e: Exception) {
+            // Return 0 if we can't read steps (permissions not granted, etc.)
+            0
+        }
     }
     
     // Additional methods for HeartRate, Exercises, etc. can be added here

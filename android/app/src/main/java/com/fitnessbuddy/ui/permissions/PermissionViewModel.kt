@@ -6,16 +6,21 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fitnessbuddy.data.healthconnect.HealthConnectManager
+import com.fitnessbuddy.domain.repository.TrainingPlanRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class PermissionViewModel @Inject constructor(
-    private val healthConnectManager: HealthConnectManager
+    private val healthConnectManager: HealthConnectManager,
+    private val trainingPlanRepository: TrainingPlanRepository
 ) : ViewModel() {
 
     var hasPermissions by mutableStateOf(false)
+        private set
+    
+    var hasCompletedOnboarding by mutableStateOf<Boolean?>(null)
         private set
 
     init {
@@ -24,7 +29,18 @@ class PermissionViewModel @Inject constructor(
 
     fun checkPermissions() {
         viewModelScope.launch {
-            hasPermissions = healthConnectManager.hasAllPermissions()
+            try {
+                hasPermissions = healthConnectManager.hasAllPermissions()
+            } catch (e: Exception) {
+                // If Health Connect is unavailable or throws, treat as no permissions
+                hasPermissions = false
+            }
+        }
+    }
+    
+    fun checkOnboardingStatus() {
+        viewModelScope.launch {
+            hasCompletedOnboarding = trainingPlanRepository.hasTrainingPlan()
         }
     }
 

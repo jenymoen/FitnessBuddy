@@ -1,7 +1,9 @@
 package com.fitnessbuddy.di
 
 import com.fitnessbuddy.data.repository.AuthRepositoryImpl
+import com.fitnessbuddy.data.repository.TrainingPlanRepositoryImpl
 import com.fitnessbuddy.domain.repository.AuthRepository
+import com.fitnessbuddy.domain.repository.TrainingPlanRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -17,4 +19,11 @@ abstract class RepositoryModule {
     abstract fun bindAuthRepository(
         authRepositoryImpl: AuthRepositoryImpl
     ): AuthRepository
+    
+    @Binds
+    @Singleton
+    abstract fun bindTrainingPlanRepository(
+        trainingPlanRepositoryImpl: TrainingPlanRepositoryImpl
+    ): TrainingPlanRepository
 }
+

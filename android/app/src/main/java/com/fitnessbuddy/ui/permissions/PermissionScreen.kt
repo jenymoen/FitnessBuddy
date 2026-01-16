@@ -1,63 +1,87 @@
 package com.fitnessbuddy.ui.permissions
 
-import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
+import androidx.health.connect.client.permission.HealthPermission
+import androidx.health.connect.client.records.ExerciseSessionRecord
+import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.StepsRecord
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.fitnessbuddy.data.healthconnect.HealthConnectManager
-import javax.inject.Inject
 
 @Composable
 fun PermissionScreen(
-    onPermissionsGranted: () -> Unit,
+    onNavigateToOnboarding: () -> Unit,
+    onNavigateToDashboard: () -> Unit,
     viewModel: PermissionViewModel = hiltViewModel()
 ) {
+    val context = LocalContext.current
+    
+    // Check Health Connect availability
+    val sdkStatus = HealthConnectClient.getSdkStatus(context)
+    val isHealthConnectAvailable = sdkStatus == HealthConnectClient.SDK_AVAILABLE
+    
+    // Check onboarding status when permissions are granted
+    LaunchedEffect(viewModel.hasPermissions) {
+        if (viewModel.hasPermissions) {
+            viewModel.checkOnboardingStatus()
+        }
+    }
+    
+    // Navigate based on onboarding completion status
+    LaunchedEffect(viewModel.hasCompletedOnboarding) {
+        viewModel.hasCompletedOnboarding?.let { hasCompleted ->
+            if (hasCompleted) {
+                onNavigateToDashboard()
+            } else {
+                onNavigateToOnboarding()
+            }
+        }
+    }
+    
+    // If permissions already granted, just wait for onboarding check
     if (viewModel.hasPermissions) {
-        LaunchedEffect(Unit) {
-            onPermissionsGranted()
+        // Show loading while checking onboarding status
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("Loading...")
         }
         return
     }
 
-    val context = LocalContext.current
-    val healthConnectClient = HealthConnectClient.getOrCreate(context)
+    val permissions = setOf(
+        HealthPermission.getReadPermission(StepsRecord::class),
+        HealthPermission.getWritePermission(StepsRecord::class),
+        HealthPermission.getReadPermission(ExerciseSessionRecord::class),
+        HealthPermission.getWritePermission(ExerciseSessionRecord::class),
+        HealthPermission.getReadPermission(HeartRateRecord::class),
+        HealthPermission.getWritePermission(HeartRateRecord::class)
+    )
     
     val permissionsLauncher = rememberLauncherForActivityResult(
-        healthConnectClient.permissionController.createRequestPermissionResultContract()
-    ) { granted ->
+        PermissionController.createRequestPermissionResultContract()
+    ) { grantedPermissions: Set<String> ->
         viewModel.onPermissionsResult()
     }
     
-    // Injecting manager instance is tricky in composable parameters without hiltViewModel, 
-    // but here we know the needed permissions set is static in HealthConnectManager
-    // Ideally ViewModel should expose the set.
-    // For MVP, we will access permissions via a quick hack or refactor VM to expose it.
-    // Let's refactor VM later, for now we assume we know the permissions.
-    // Actually we can instantiate the manager logic via DI in VM, checking dependencies.
-    // Let's assume we can get the set from VM.
-    
-    // We will need to update PermissionViewModel to expose `permissions` set.
-    // I'll update VM now? No, I'll just hardcode them in Screen or access via a provider pattern.
-    // Or I can access `viewModel.healthConnectManager.PERMISSIONS` but `healthConnectManager` is private.
-    // I will use a simplified set here reflecting the Manager.
-    
-    val permissions = setOf(
-        androidx.health.connect.client.permission.HealthPermission.getReadPermission(androidx.health.connect.client.records.StepsRecord::class),
-        androidx.health.connect.client.permission.HealthPermission.getWritePermission(androidx.health.connect.client.records.StepsRecord::class),
-        // Add others... this is getting verbose and duplicate. 
-        // Better: Update ViewModel to expose permissions.
-    )
+    // Helper function to handle permission skip/continue
+    fun handleSkipPermissions() {
+        viewModel.checkOnboardingStatus()
+    }
 
     Column(
         modifier = Modifier
@@ -73,24 +97,37 @@ fun PermissionScreen(
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        Text("We need permission to access your steps and exercise data.")
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        Button(onClick = {
-            permissionsLauncher.launch(
-                // Use the set here. I'll fix this in a sec by updating VM.
-                setOf(
-                    androidx.health.connect.client.permission.HealthPermission.getReadPermission(androidx.health.connect.client.records.StepsRecord::class),
-                    androidx.health.connect.client.permission.HealthPermission.getWritePermission(androidx.health.connect.client.records.StepsRecord::class),
-                    androidx.health.connect.client.permission.HealthPermission.getReadPermission(androidx.health.connect.client.records.ExerciseSessionRecord::class),
-                    androidx.health.connect.client.permission.HealthPermission.getWritePermission(androidx.health.connect.client.records.ExerciseSessionRecord::class),
-                    androidx.health.connect.client.permission.HealthPermission.getReadPermission(androidx.health.connect.client.records.HeartRateRecord::class),
-                    androidx.health.connect.client.permission.HealthPermission.getWritePermission(androidx.health.connect.client.records.HeartRateRecord::class)
-                )
+        if (isHealthConnectAvailable) {
+            Text(
+                text = "We need permission to access your steps and exercise data.",
+                textAlign = TextAlign.Center
             )
-        }) {
-            Text("Grant Permissions")
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Button(onClick = {
+                permissionsLauncher.launch(permissions)
+            }) {
+                Text("Grant Permissions")
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            OutlinedButton(onClick = { handleSkipPermissions() }) {
+                Text("Skip for now")
+            }
+        } else {
+            Text(
+                text = "Health Connect is not available on this device.\n\nYou can still use the app, but fitness tracking features will be limited.",
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Button(onClick = { handleSkipPermissions() }) {
+                Text("Continue without Health Connect")
+            }
         }
     }
 }

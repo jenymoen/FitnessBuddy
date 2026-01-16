@@ -1,7 +1,7 @@
 package com.fitnessbuddy.domain.repository
 
+import com.fitnessbuddy.domain.model.DailyWorkout
 import com.fitnessbuddy.domain.model.WorkoutPlan
-import kotlinx.coroutines.flow.Flow
 
 interface WorkoutRepository {
     suspend fun getActiveWorkoutPlan(): Result<WorkoutPlan>

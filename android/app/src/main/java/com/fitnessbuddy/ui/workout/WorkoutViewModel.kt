@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.fitnessbuddy.domain.model.DailyWorkout
 import com.fitnessbuddy.domain.model.WorkoutPlan
 import com.fitnessbuddy.domain.repository.WorkoutRepository
 import dagger.hilt.android.lifecycle.HiltViewModel

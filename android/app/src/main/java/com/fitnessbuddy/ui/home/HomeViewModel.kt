@@ -26,13 +26,18 @@ class HomeViewModel @Inject constructor(
     fun fetchTodaySteps() {
         viewModelScope.launch {
             isLoading = true
-            val now = Instant.now()
-            val startOfDay = java.time.LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()
-            
-            // Health Connect uses Instant. In real app, consider User's TimeZone.
-            // For MVP, we use UTC/System truncated.
-            
-            stepsToday = healthConnectManager.readSteps(startOfDay, now)
+            try {
+                val now = Instant.now()
+                val startOfDay = java.time.LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()
+                
+                // Health Connect uses Instant. In real app, consider User's TimeZone.
+                // For MVP, we use UTC/System truncated.
+                
+                stepsToday = healthConnectManager.readSteps(startOfDay, now)
+            } catch (e: Exception) {
+                // If Health Connect fails, just show 0 steps
+                stepsToday = 0
+            }
             isLoading = false
         }
     }

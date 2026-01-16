@@ -16,7 +16,8 @@ object HealthConnectModule {
     @Provides
     @Singleton
     fun provideHealthConnectClient(@ApplicationContext context: Context): HealthConnectClient? {
-        return if (HealthConnectClient.isProviderAvailable(context)) {
+        val sdkStatus = HealthConnectClient.getSdkStatus(context)
+        return if (sdkStatus == HealthConnectClient.SDK_AVAILABLE) {
             HealthConnectClient.getOrCreate(context)
         } else {
             null
