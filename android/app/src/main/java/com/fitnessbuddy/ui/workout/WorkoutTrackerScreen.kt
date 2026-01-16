@@ -38,6 +38,9 @@ import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.*
 import com.fitnessbuddy.data.sensor.HeartRateSensorState
+import com.fitnessbuddy.data.healthconnect.ExerciseSessionInfo
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 // Theme colors (consistent across the app)
 private val DarkBackground = Color(0xFF0D0D0D)
@@ -93,6 +96,21 @@ fun WorkoutTrackerScreen(
     val heartRateSensorState = viewModel.heartRateSensorState
     val currentSpeedKmh = viewModel.getSpeedKmh()
     val hasGpsSignal = viewModel.hasGpsSignal
+    
+    // Health Connect import state
+    val showImportDialog = viewModel.showImportDialog
+    val healthConnectSessions = viewModel.healthConnectSessions
+    val isLoadingHealthConnect = viewModel.isLoadingHealthConnect
+    
+    // Show import dialog
+    if (showImportDialog) {
+        ImportHealthConnectDialog(
+            sessions = healthConnectSessions,
+            isLoading = isLoadingHealthConnect,
+            onSessionSelected = { viewModel.importSession(it) },
+            onDismiss = { viewModel.closeImportDialog() }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -151,6 +169,27 @@ fun WorkoutTrackerScreen(
                     selectedMode = workoutMode,
                     onModeSelected = { viewModel.setMode(it) }
                 )
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                // Import from Health Connect button
+                OutlinedButton(
+                    onClick = { viewModel.openImportDialog() },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentGreen),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Star,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "IMPORT FROM HEALTH CONNECT",
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 12.sp
+                    )
+                }
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
@@ -1007,3 +1046,125 @@ private fun WorkoutControls(
     }
 }
 
+@Composable
+private fun ImportHealthConnectDialog(
+    sessions: List<ExerciseSessionInfo>,
+    isLoading: Boolean,
+    onSessionSelected: (ExerciseSessionInfo) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardBackground,
+        title = {
+            Text(
+                text = "Import from Health Connect",
+                color = TextWhite,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.heightIn(max = 400.dp)
+            ) {
+                Text(
+                    text = "Select a workout from today:",
+                    color = TextGray,
+                    fontSize = 14.sp
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                when {
+                    isLoading -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(100.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(color = AccentGreen)
+                        }
+                    }
+                    sessions.isEmpty() -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(100.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = TextGray,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "No workouts found today",
+                                    color = TextGray,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                    else -> {
+                        Column(
+                            modifier = Modifier.verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            sessions.forEach { session ->
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onSessionSelected(session) },
+                                    colors = CardDefaults.cardColors(containerColor = DarkBackground),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = session.title,
+                                                color = TextWhite,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp
+                                            )
+                                            Text(
+                                                text = "${session.startTime.atZone(ZoneId.systemDefault()).format(timeFormatter)} • ${session.durationMinutes} min",
+                                                color = TextGray,
+                                                fontSize = 12.sp
+                                            )
+                                            Text(
+                                                text = session.sourceApp.substringAfterLast("."),
+                                                color = AccentGreen.copy(alpha = 0.7f),
+                                                fontSize = 10.sp
+                                            )
+                                        }
+                                        Icon(
+                                            Icons.Default.PlayArrow,
+                                            contentDescription = "Import",
+                                            tint = AccentGreen
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextGray)
+            }
+        }
+    )
+}

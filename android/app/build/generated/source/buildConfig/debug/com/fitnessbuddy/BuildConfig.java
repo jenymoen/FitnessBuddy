@@ -10,7 +10,7 @@ public final class BuildConfig {
   public static final int VERSION_CODE = 1;
   public static final String VERSION_NAME = "1.0";
   // Field from default config.
-  public static final String GEMINI_API_KEY = "AIzaSyDqYZu3sJmiJ55_VRGucbqO5okNP9Pu0wM";
+  public static final String GEMINI_API_KEY = "AIzaSyDFn98rvBGLTdn4aKD-q53_VJrPtmP6qlI";
   // Field from default config.
   public static final String MAPS_API_KEY = "AIzaSyD_1XwH5IXtyjGARJNAKQcg5U_sLiEmmTM";
 }

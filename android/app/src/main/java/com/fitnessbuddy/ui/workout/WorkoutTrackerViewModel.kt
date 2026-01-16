@@ -10,6 +10,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fitnessbuddy.data.sensor.BluetoothHeartRateManager
 import com.fitnessbuddy.data.sensor.HeartRateSensorState
+import com.fitnessbuddy.data.healthconnect.HealthConnectManager
+import com.fitnessbuddy.data.healthconnect.ExerciseSessionInfo
 import com.fitnessbuddy.data.location.LocationPoint
 import com.fitnessbuddy.data.location.LocationTracker
 import com.fitnessbuddy.domain.model.WorkoutResult
@@ -51,7 +53,8 @@ class WorkoutTrackerViewModel @Inject constructor(
     private val trainingPlanRepository: TrainingPlanRepository,
     private val locationTracker: LocationTracker,
     private val geminiRepository: GeminiRepository,
-    private val bluetoothHeartRateManager: BluetoothHeartRateManager
+    private val bluetoothHeartRateManager: BluetoothHeartRateManager,
+    private val healthConnectManager: HealthConnectManager
 ) : ViewModel() {
 
     var trainingDay by mutableStateOf<TrainingDay?>(null)
@@ -97,6 +100,16 @@ class WorkoutTrackerViewModel @Inject constructor(
         private set
     
     var feedbackError by mutableStateOf<String?>(null)
+        private set
+    
+    // Health Connect import state
+    var healthConnectSessions by mutableStateOf<List<ExerciseSessionInfo>>(emptyList())
+        private set
+    
+    var isLoadingHealthConnect by mutableStateOf(false)
+        private set
+    
+    var showImportDialog by mutableStateOf(false)
         private set
 
     private var timerJob: Job? = null
@@ -283,6 +296,41 @@ class WorkoutTrackerViewModel @Inject constructor(
         stopTimer()
         stopLocationTracking()
         stopHeartRateMonitoring()
+    }
+    
+    // Health Connect import functions
+    
+    fun openImportDialog() {
+        showImportDialog = true
+        loadHealthConnectSessions()
+    }
+    
+    fun closeImportDialog() {
+        showImportDialog = false
+    }
+    
+    private fun loadHealthConnectSessions() {
+        viewModelScope.launch {
+            isLoadingHealthConnect = true
+            healthConnectSessions = healthConnectManager.readTodaysExerciseSessions()
+            isLoadingHealthConnect = false
+        }
+    }
+    
+    /**
+     * Import a session from Health Connect.
+     * Sets the workout data from the imported session and completes immediately.
+     */
+    fun importSession(session: ExerciseSessionInfo) {
+        showImportDialog = false
+        workoutMode = WorkoutMode.INDOOR // Imported sessions don't have route data
+        
+        // Set the elapsed time from the imported session
+        elapsedSeconds = session.durationMinutes * 60
+        
+        // Mark as completed and request feedback
+        workoutState = WorkoutState.COMPLETED
+        requestFeedback()
     }
 }
 

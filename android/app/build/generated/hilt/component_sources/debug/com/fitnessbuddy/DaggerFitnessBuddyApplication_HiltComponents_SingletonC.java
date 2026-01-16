@@ -527,7 +527,7 @@ public final class DaggerFitnessBuddyApplication_HiltComponents_SingletonC {
           return (T) new TrainingPlanViewModel(singletonCImpl.geminiRepositoryImplProvider.get(), singletonCImpl.trainingPlanRepositoryImplProvider.get(), singletonCImpl.onboardingDataHolderProvider.get());
 
           case 6: // com.fitnessbuddy.ui.workout.WorkoutTrackerViewModel
-          return (T) new WorkoutTrackerViewModel(singletonCImpl.trainingPlanRepositoryImplProvider.get(), singletonCImpl.locationTrackerProvider.get(), singletonCImpl.geminiRepositoryImplProvider.get(), singletonCImpl.bluetoothHeartRateManagerProvider.get());
+          return (T) new WorkoutTrackerViewModel(singletonCImpl.trainingPlanRepositoryImplProvider.get(), singletonCImpl.locationTrackerProvider.get(), singletonCImpl.geminiRepositoryImplProvider.get(), singletonCImpl.bluetoothHeartRateManagerProvider.get(), singletonCImpl.healthConnectManagerProvider.get());
 
           case 7: // com.fitnessbuddy.ui.workout.WorkoutViewModel
           return (T) new WorkoutViewModel(singletonCImpl.workoutRepositoryImplProvider.get());

@@ -94,5 +94,71 @@ class HealthConnectManager @Inject constructor(
             delay(5000L) // Poll every 5 seconds
         }
     }
+    
+    /**
+     * Reads today's exercise sessions from Health Connect.
+     * Returns sessions from other apps like Strava, Garmin, Samsung Health, etc.
+     */
+    suspend fun readTodaysExerciseSessions(): List<ExerciseSessionInfo> {
+        if (healthConnectClient == null) return emptyList()
+        
+        return try {
+            val endTime = Instant.now()
+            val startTime = endTime.truncatedTo(ChronoUnit.DAYS) // Start of today
+            
+            val request = ReadRecordsRequest(
+                recordType = ExerciseSessionRecord::class,
+                timeRangeFilter = TimeRangeFilter.between(startTime, endTime)
+            )
+            val response = healthConnectClient.readRecords(request)
+            
+            response.records.map { record ->
+                ExerciseSessionInfo(
+                    id = record.metadata.id,
+                    title = record.title ?: getExerciseTypeName(record.exerciseType),
+                    exerciseType = record.exerciseType,
+                    startTime = record.startTime,
+                    endTime = record.endTime,
+                    durationMinutes = java.time.Duration.between(record.startTime, record.endTime).toMinutes(),
+                    notes = record.notes,
+                    sourceApp = record.metadata.dataOrigin.packageName
+                )
+            }.sortedByDescending { it.startTime }
+        } catch (e: Exception) {
+            android.util.Log.e("HealthConnectManager", "Error reading exercise sessions", e)
+            emptyList()
+        }
+    }
+    
+    private fun getExerciseTypeName(exerciseType: Int): String {
+        return when (exerciseType) {
+            ExerciseSessionRecord.EXERCISE_TYPE_RUNNING -> "Running"
+            ExerciseSessionRecord.EXERCISE_TYPE_WALKING -> "Walking"
+            ExerciseSessionRecord.EXERCISE_TYPE_BIKING -> "Cycling"
+            ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_POOL -> "Swimming (Pool)"
+            ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_OPEN_WATER -> "Swimming (Open Water)"
+            ExerciseSessionRecord.EXERCISE_TYPE_HIKING -> "Hiking"
+            ExerciseSessionRecord.EXERCISE_TYPE_YOGA -> "Yoga"
+            ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING -> "Strength Training"
+            ExerciseSessionRecord.EXERCISE_TYPE_ELLIPTICAL -> "Elliptical"
+            ExerciseSessionRecord.EXERCISE_TYPE_ROWING_MACHINE -> "Rowing"
+            ExerciseSessionRecord.EXERCISE_TYPE_STAIR_CLIMBING -> "Stair Climbing"
+            else -> "Exercise"
+        }
+    }
 }
+
+/**
+ * Data class representing an exercise session from Health Connect.
+ */
+data class ExerciseSessionInfo(
+    val id: String,
+    val title: String,
+    val exerciseType: Int,
+    val startTime: Instant,
+    val endTime: Instant,
+    val durationMinutes: Long,
+    val notes: String?,
+    val sourceApp: String
+)
 
